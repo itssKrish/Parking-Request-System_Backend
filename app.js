@@ -13,6 +13,43 @@ const { MongoClient } = require("mongodb");
 const { generateToken, jwtSecret } = require('./auth');
 const { expressjwt: jwt } = require("express-jwt");
 
+app.get('/', (req, res)=>{
+  res.status(200);
+  res.send("I'm Alive !!!");
+});
+
+// Route for resetting password
+app.post("/reset-password", async (req, res) => {
+  try {
+    const data = req.body;
+
+    if (data.newPassword !== data.confirmPassword) {
+      return res.status(400).send("Passwords do not match");
+    }
+
+    // Validate the user's identity and reset the password
+    const db = await connectToMongoDB();
+    const collection = db.collection("credentials");
+
+    // Check if the user with the provided email exists in the database
+    const existingUser = await collection.findOne({ email: data.email });
+    if (!existingUser) {
+      return res.status(404).send("User not found");
+    }
+
+    // Update the user's password
+    await collection.updateOne(
+      { email: data.email },
+      { $set: { password: data.newPassword } }
+    );
+
+    res.status(200).send("Password reset successfully");
+  } catch (error) {
+    console.error("Error:", error);
+    res.status(500).send("An error occurred while processing your request.");
+  }
+});
+
 // Middleware to validate tokens
 const authenticateToken = jwt({ secret: process.env.JWTSECRET, algorithms: ["HS256"] }).unless({ path: ["/login"] });
 app.use(authenticateToken);
@@ -28,23 +65,18 @@ const loginRateLimiter = rateLimit({
 //Employee_Login-API/Form
 app.post("/login", loginRateLimiter, async (req, res) => {
   try {
-    // Assuming you have user authentication logic here
     const data = req.body;
 
-    // Validate the login credentials (data.username and data.password)
+    // Validate the login credentials (data.email and data.password)
     // If valid, proceed with creating a user entry and generating a token
 
     const user = {
       email: data.email,
-      name: data.name,
-      vehicleType: data.vehicleType,
-      vehicleNumber: data.vehicleNumber,
-      startDate: data.startDate,
-      endDate: data.endDate,
+      password: data.password,
     };
 
     const db = await connectToMongoDB();
-    const collection = db.collection("user-details");
+    const collection = db.collection("credentials");
 
     // Check if there's already an entry with the same email
     const existingUser = await collection.findOne({ email: user.email });
@@ -60,6 +92,40 @@ app.post("/login", loginRateLimiter, async (req, res) => {
     console.error("Error:", error);
     res.status(500).send("An error occurred while processing your request.");
   }
+});
+
+//Employee_Form-API
+app.post("/form", loginRateLimiter, async (req, res) => {
+  //res.send("Test");
+  try {
+      // Get the data from the request body
+      const data = req.body;
+
+  // Create a new data
+  const vehicle = {
+      name: data.name,
+      email: data.email,
+      vehicleType: data.vehicleType,
+      vehicleNumber: data.vehicleNumber,
+      startDate: data.startDate,
+      endDate: data.endDate,
+    };
+
+  const db = await connectToMongoDB();
+  const collection = db.collection("user-details");
+  // Check if there's already an entry with the same email
+  const existingUser = await collection.findOne({ email: vehicle.email });
+  if (existingUser) {
+    return res.status(409).send("User already exists");
+  }
+  await collection.insertOne(vehicle);
+
+  // Return a success response
+  res.status(200).send("Successful");
+} catch (error) {
+  console.error("Error:", error);
+  res.status(500).send("An error occurred while processing your request.");
+}
 });
 
 
