@@ -1,38 +1,61 @@
 const express = require("express");
-const { MongoClient } = require("mongodb");
 const path = require('path');
 const cors = require('cors');
-const { connectToMongoDB } = require('./db');
+const nodemailer = require("nodemailer");
+const rateLimit = require("express-rate-limit");
 require('dotenv').config()
 const app = express();
 app.use(express.json());
 app.use(cors());
 
-const nodemailer = require("nodemailer");
+const { connectToMongoDB } = require('./db');
+const { MongoClient } = require("mongodb");
+const { generateToken, jwtSecret } = require('./auth');
+const { expressjwt: jwt } = require("express-jwt");
 
-//Employee_Form-API
-app.post("/form", async (req, res) => {
-    //res.send("Test");
-    try {
-        // Get the data from the request body
-        const data = req.body;
+// Middleware to validate tokens
+const authenticateToken = jwt({ secret: process.env.JWTSECRET, algorithms: ["HS256"] }).unless({ path: ["/login"] });
+app.use(authenticateToken);
 
-    // Create a new data
-    const vehicle = {
-        name: data.name,
-        id: data.id,
-        vehicleType: data.vehicleType,
-        vehicleNumber: data.vehicleNumber,
-        startDate: data.startDate,
-        endDate: data.endDate,
-      };
+// Rate limiter logic
+const loginRateLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 3, // 5 requests per windowMs
+  message: "Too many requests from this IP, please try again later.",
+});
+
+
+//Employee_Login-API/Form
+app.post("/login", loginRateLimiter, async (req, res) => {
+  try {
+    // Assuming you have user authentication logic here
+    const data = req.body;
+
+    // Validate the login credentials (data.username and data.password)
+    // If valid, proceed with creating a user entry and generating a token
+
+    const user = {
+      email: data.email,
+      name: data.name,
+      vehicleType: data.vehicleType,
+      vehicleNumber: data.vehicleNumber,
+      startDate: data.startDate,
+      endDate: data.endDate,
+    };
 
     const db = await connectToMongoDB();
     const collection = db.collection("user-details");
-    await collection.insertOne(vehicle);
 
-    // Return a success response
-    res.status(200).send("Successful");
+    // Check if there's already an entry with the same email
+    const existingUser = await collection.findOne({ email: user.email });
+    if (existingUser) {
+      return res.status(409).send("User already exists");
+    }
+    await collection.insertOne(user);
+
+    // Generates JWT token
+    const token = generateToken(user, '1h'); // Generate JWT with 1 hour expiration
+    res.json({ token });
   } catch (error) {
     console.error("Error:", error);
     res.status(500).send("An error occurred while processing your request.");
@@ -42,9 +65,14 @@ app.post("/form", async (req, res) => {
 
 //EmployeeDetails-Fetching-API
 app.get("/users", async (req, res) => {
+  try {
     const db = await connectToMongoDB();
     const users = await db.collection("user-details").find().toArray();
     res.json(users);
+  } catch (error) {
+    console.error("Error:", error);
+    res.status(500).send("An error occurred while processing your request.");
+  }
 });
 
 
@@ -74,17 +102,17 @@ app.post("/req", async (req, res) => {
 
 //Approve-Reject Form Data Fetching API
 app.get("/status", async (req, res) => {
-    try {
-      const db = await connectToMongoDB();
-      const collection = db.collection("approve-reject");
-      const documents = await collection.find({}).toArray();
-  
-      // Return the documents in JSON format
-      res.json(documents);
-    } catch (error) {
-      console.error("Error:", error);
-      res.status(500).send("An error occurred while processing your request.");
-    }
+  try {
+    const db = await connectToMongoDB();
+    const collection = db.collection("approve-reject");
+    const documents = await collection.find({}).toArray();
+
+    // Return the documents in JSON format
+    res.json(documents);
+  } catch (error) {
+    console.error("Error:", error);
+    res.status(500).send("An error occurred while processing your request.");
+  }
 });
 
 
