@@ -13,13 +13,20 @@ const { MongoClient } = require("mongodb");
 const { generateToken, jwtSecret } = require('./auth');
 const { expressjwt: jwt } = require("express-jwt");
 
+// Rate limiter logic
+const loginRateLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 3, // 5 requests per windowMs
+  message: "Too many requests from this IP, please try again later.",
+});
+
 app.get('/', (req, res)=>{
   res.status(200);
   res.send("I'm Alive !!!");
 });
 
 // Route for resetting password
-app.post("/reset-password", async (req, res) => {
+app.post("/reset-password", loginRateLimiter, async (req, res) => {
   try {
     const data = req.body;
 
@@ -50,20 +57,46 @@ app.post("/reset-password", async (req, res) => {
   }
 });
 
-// Middleware to validate tokens
-const authenticateToken = jwt({ secret: process.env.JWTSECRET, algorithms: ["HS256"] }).unless({ path: ["/login"] });
-app.use(authenticateToken);
+//user login
+app.post("/login", loginRateLimiter, async (req, res) => {
+  try {
+    const data = req.body;
 
-// Rate limiter logic
-const loginRateLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 3, // 5 requests per windowMs
-  message: "Too many requests from this IP, please try again later.",
+    // Validate the login credentials (data.email and data.password)
+    const user = {
+      email: data.email,
+      password: data.password,
+    };
+
+    const db = await connectToMongoDB();
+    const collection = db.collection("credentials");
+
+    // Check if there's an entry with the provided email and password
+    const existingUser = await collection.findOne({
+      email: user.email,
+      password: user.password,
+    });
+
+    if (existingUser) {
+      // Generate a JWT token
+      const token = generateToken(existingUser, '1h'); // Generate JWT with 1 hour expiration
+      res.json({ token });
+    } else {
+      // If user doesn't exist, send a "not found" response
+      res.status(404).json({ message: "User not found" });
+    }
+  } catch (error) {
+    console.error("Error:", error);
+    res.status(500).send("An error occurred while processing your request.");
+  }
 });
 
+// Middleware to validate tokens
+const authenticateToken = jwt({ secret: process.env.JWTSECRET, algorithms: ["HS256"] }).unless({ path: ["/signup"] });
+app.use(authenticateToken);
 
-//Employee_Login-API/Form
-app.post("/login", loginRateLimiter, async (req, res) => {
+//Employee_signup-API/Form
+app.post("/signup", loginRateLimiter, async (req, res) => {
   try {
     const data = req.body;
 
