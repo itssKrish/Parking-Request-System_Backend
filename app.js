@@ -25,6 +25,7 @@ app.get('/', (req, res)=>{
   res.send("I'm Alive !!!");
 });
 
+
 // Route for resetting password
 app.post("/reset-password", loginRateLimiter, async (req, res) => {
   try {
@@ -36,7 +37,7 @@ app.post("/reset-password", loginRateLimiter, async (req, res) => {
 
     // Validate the user's identity and reset the password
     const db = await connectToMongoDB();
-    const collection = db.collection("credentials");
+    const collection = db.collection("user-credentials");
 
     // Check if the user with the provided email exists in the database
     const existingUser = await collection.findOne({ email: data.email });
@@ -57,6 +58,7 @@ app.post("/reset-password", loginRateLimiter, async (req, res) => {
   }
 });
 
+
 //user login
 app.post("/login", loginRateLimiter, async (req, res) => {
   try {
@@ -69,7 +71,80 @@ app.post("/login", loginRateLimiter, async (req, res) => {
     };
 
     const db = await connectToMongoDB();
-    const collection = db.collection("credentials");
+    const collection = db.collection("user-credentials");
+
+    // Check if there's an entry with the provided email and password
+    const existingUser = await collection.findOne({
+      email: user.email,
+      password: user.password,
+    });
+
+    if (existingUser) {
+      // Generate a JWT token
+      const token = generateToken(existingUser, '1h'); // Generate JWT with 1 hour expiration
+      res.json({ token });
+    } else {
+      // If user doesn't exist, send a "not found" response
+      res.status(404).json({ message: "User not found" });
+    }
+  } catch (error) {
+    console.error("Error:", error);
+    res.status(500).send("An error occurred while processing your request.");
+  }
+});
+
+
+//Admin_signup-API
+app.post("/admin-signup", loginRateLimiter, async (req, res) => {
+  try {
+    const data = req.body;
+
+    // Validate the admin key
+    const providedKey = data.key;
+    const adminKey = process.env.ADMIN_KEY;
+
+    if (providedKey !== adminKey) {
+      return res.status(401).send("Unauthorized, wrong key entered !");
+    }
+
+    // Proceed with creating the admin user
+    const user = {
+      email: data.email,
+      password: data.password,
+    };
+
+    const db = await connectToMongoDB();
+    const collection = db.collection("admin-credentials");
+
+    // Check if there's already an entry with the same email
+    const existingUser = await collection.findOne({ email: user.email });
+    if (existingUser) {
+      return res.status(409).send("User already exists");
+    }
+    await collection.insertOne(user);
+
+    // Generates JWT token
+    const token = generateToken(user, '1h'); // Generate JWT with 1 hour expiration
+    res.json({ token });
+  } catch (error) {
+    console.error("Error:", error);
+    res.status(500).send("An error occurred while processing your request.");
+  }
+});
+
+//admin login
+app.post("/admin-login", loginRateLimiter, async (req, res) => {
+  try {
+    const data = req.body;
+
+    // Validate the login credentials (data.email and data.password)
+    const user = {
+      email: data.email,
+      password: data.password,
+    };
+
+    const db = await connectToMongoDB();
+    const collection = db.collection("admin-credentials");
 
     // Check if there's an entry with the provided email and password
     const existingUser = await collection.findOne({
@@ -109,7 +184,7 @@ app.post("/signup", loginRateLimiter, async (req, res) => {
     };
 
     const db = await connectToMongoDB();
-    const collection = db.collection("credentials");
+    const collection = db.collection("user-credentials");
 
     // Check if there's already an entry with the same email
     const existingUser = await collection.findOne({ email: user.email });
