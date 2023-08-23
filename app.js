@@ -1,16 +1,11 @@
 const express = require("express");
 const path = require('path');
 const cors = require('cors');
-
-const {loginRateLimiter} = require('./auth/rate-limiter')
 require('dotenv').config()
 const app = express();
 app.use(express.json());
 app.use(cors());
 
-const { connectToMongoDB } = require('./db');
-const { MongoClient } = require("mongodb");
-const { generateToken, jwtSecret } = require('./auth/token');
 const { expressjwt: jwt } = require("express-jwt");
 
 //API-Call
@@ -25,7 +20,10 @@ const {UserLogin} = require('./API/User/user-login');
 const {AdminSignUp} = require('./API/Admin/admin-signup');
 const {AdminLogin} = require('./API/Admin/admin-login');
 
+// Middleware 
+const {loginRateLimiter} = require('./auth/rate-limiter')
 
+// Home Page
 app.get('/', (req, res)=>{
   res.status(200);
   res.send("I'm Alive !!!");
@@ -75,6 +73,6 @@ app.get("/status", loginRateLimiter(), UserStatus);
 app.get("/send-emails", ApproveEmail)
 
 
-app.listen(3000, () => {
-  console.log("Server started on port 3000");
+app.listen(process.env.PORT, () => {
+  console.log(`Server started on port ${process.env.PORT}`);
 });
