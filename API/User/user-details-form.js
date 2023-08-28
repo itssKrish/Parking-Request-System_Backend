@@ -17,19 +17,35 @@ async function UserDetails(req, res) {
 
     const db = await connectToMongoDB();
     const collection = db.collection("user-details");
-    // Check if there's already an entry with the same email
+
+    // Check if there's already an entry with the same vehicle number and overlapping date range
     const existingUser = await collection.findOne({
-      startDate: vehicle.startDate,
-      endDate: vehicle.endDate,
+      vehicleNumber: vehicle.vehicleNumber,
+      $or: [
+        {
+          startDate: { $lte: vehicle.startDate },
+          endDate: { $gte: vehicle.startDate },
+        },
+        {
+          startDate: { $lte: vehicle.endDate },
+          endDate: { $gte: vehicle.endDate },
+        },
+        {
+          startDate: { $gte: vehicle.startDate },
+          endDate: { $lte: vehicle.endDate },
+        },
+      ],
     });
 
     if (existingUser) {
-      return res.status(409).send("same dates have been entered");
+      return res.status(409).send("Duplicate data found");
     }
+
+    // Insert the vehicle data into the database
     await collection.insertOne(vehicle);
 
     // Return a success response
-    res.status(200).send("Successful");
+    res.status(200).send("Data created successfully");
   } catch (error) {
     console.error("Error:", error);
     res.status(500).send("An error occurred while processing your request.");
